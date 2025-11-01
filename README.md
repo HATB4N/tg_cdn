@@ -1,10 +1,30 @@
 # d
 hola
 
-## need
-channel id, bot token>= 1, db svr
+## api
+### upload
+- endpoint: `/upload`
+- method: `POST`
+- body: ```
+        {
+          "result": "1",
+          "file_id": "<uuid>"
+        }
+        ```
+### retrive
+- endpoint: `/content/<uuid>`
+- method: `GET`
+- body: `raw img bin data with appropriate mimetype`
 
-### table
+## build
+```bash
+(sudo) docker compose up --build (-d)
+```
+
+## need
+channel id, bot token>= 1, db svr [mysql / mariadb]
+
+### tables
 
 ---
 
