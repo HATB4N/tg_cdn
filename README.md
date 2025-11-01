@@ -2,8 +2,7 @@
 hola
 
 ## need
-channel id, bot token>= 1
-db svr
+channel id, bot token>= 1, db svr
 
 ### table
 
