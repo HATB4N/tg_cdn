@@ -4,7 +4,7 @@ hola
 ## api
 ### upload
 - endpoint: `/upload`
-- method: `POST`
+- method: `POST` with img file
 - body: ```
         {
           "result": "1",
