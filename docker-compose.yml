@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: tg_img_cdn_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - /tmp/tg_img_cdn:/tmp/tg_img_cdn
+
