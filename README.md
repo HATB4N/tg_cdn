@@ -36,7 +36,7 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 | files |
 | url_caches |
 
-*3 rows in set (0.008 sec)*
+*3 rows in set (0.011 sec)*
 
 ---
 
@@ -44,10 +44,10 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 
 | Field | Type | Null | Key | Default | Extra |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| bot_id | int(11) | NO | PRI | NULL | auto_increment |
+| bot_id | smallint(6) | NO | PRI | NULL | auto_increment |
 | token | varchar(50) | NO | UNI | NULL | |
 
-*2 rows in set (0.029 sec)*
+*2 rows in set (0.012 sec)*
 
 ---
 
@@ -55,14 +55,15 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 
 | Field | Type | Null | Key | Default | Extra |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| file_id | binary(16) | NO | PRI | NULL | |
-| state | int(11) | NO | MUL | 0 | |
-| msg_id | bigint(20) | YES | MUL | NULL | |
+| file_uuid | binary(16) | NO | PRI | NULL | |
+| file_id | verchar(191) | YES | MUL | NULL | |
+| state | smallint(6) | NO | MUL | 0 | |
+| msg_id | int(11) | YES | MUL | NULL | |
 | bot_id | int(11) | YES | MUL | NULL | |
 | created_at | timestamp | NO | MUL | current_timestamp() | |
 | updated_at | timestamp | YES | | NULL | on update current_timestamp() |
 
-*6 rows in set (0.035 sec)*
+*7 rows in set (0.012 sec)*
 
 ---
 
@@ -70,9 +71,9 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 
 | Field | Type | Null | Key | Default | Extra |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| file_id | binary(16) | NO | PRI | NULL | |
-| tg_file_path | varchar(50) | NO | | NULL | |
-| bot_id | int(11) | NO | MUL | NULL | |
-| url_updated_at | timestamp | NO | | current_timestamp() | on update current_timestamp() |
+| file_uuid | binary(16) | NO | PRI | NULL | |
+| file_path | varchar(50) | NO | | NULL | |
+| bot_id | int(small11) | NO | MUL | NULL | |
+| file_path_updated_at | timestamp | NO | | current_timestamp() | on update current_timestamp() |
 
-*4 rows in set (0.067 sec)*
+*4 rows in set (0.004 sec)*
