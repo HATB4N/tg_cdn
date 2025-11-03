@@ -21,8 +21,12 @@ hola
 (sudo) docker compose up --build (-d)
 ```
 
-## need
+## req
 channel id, bot token>= 1, db svr [mysql / mariadb]
+
+## etc
+### structure
+wip
 
 ### tables
 
