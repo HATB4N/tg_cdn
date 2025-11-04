@@ -28,6 +28,13 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 ### structure
 <img width="1310" height="875" alt="tgt_cdn drawio" src="https://github.com/user-attachments/assets/b3e21b07-4b1a-451c-acd7-503b087ff9f9" />
 
+---
+
+The maximum exportable file size via ```api.telegram.org/file/bot{bot_token}/{file_path}``` is **20 MB**.  
+The ```file_id``` is unique and static, but ```file_path``` is not.  
+You need to request updates from the Telegram server using the ```file_id```.  
+Officially, the ```file_path``` is guaranteed to remain valid for at least **one hour**.  
+[reference](https://core.telegram.org/bots/api#getfile)
 
 ### tables
 
