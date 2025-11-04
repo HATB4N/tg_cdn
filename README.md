@@ -31,7 +31,7 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 ---
 
 The maximum exportable file size via ```api.telegram.org/file/bot{bot_token}/{file_path}``` is **20 MB**.  
-The ```file_id``` is unique and static, but ```file_path``` is not.  
+The ```file_id``` is unique and static, but ```file_path``` is **not**.  
 You need to request updates from the Telegram server using the ```file_id```.  
 Officially, the ```file_path``` is guaranteed to remain valid for at least **one hour**.  
 [reference](https://core.telegram.org/bots/api#getfile)
