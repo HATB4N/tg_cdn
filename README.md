@@ -18,6 +18,8 @@ hola
 
 ## build
 ```bash
+git clone https://github.com/HATB4N/tg_cdn.git
+cd tg_cdn
 (sudo) docker compose up --build (-d)
 ```
 
