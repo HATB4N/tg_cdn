@@ -1,8 +1,0 @@
-python-telegram-bot>=21.0
-SQLAlchemy>=2.0
-aiomysql
-httpx
-quart
-aiohttp
-hypercorn
-
