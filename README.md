@@ -1,6 +1,3 @@
-# d
-hola
-
 ## api
 ### upload
 - endpoint: `/upload`
@@ -8,7 +5,7 @@ hola
 - body: ```
         {
           "result": "1",
-          "file_id": "<uuid>"
+          "file_uuid": "<uuid>"
         }
         ```
 ### retrive
@@ -16,7 +13,7 @@ hola
 - method: `GET`
 - body: `raw img bin data with appropriate mimetype`
 
-## build
+## install & build
 ```bash
 git clone https://github.com/HATB4N/tg_cdn.git
 cd tg_cdn
@@ -24,7 +21,10 @@ cd tg_cdn
 ```
 
 ## req
-channel id, bot token>= 1, db svr [mysql / mariadb]
+channel id, bot token>= 1(distributed)  
+db svr [mysql / mariadb](tested on mariadb 10.11)  
+recommend linux(tested on rocky linux 10)  
+temp file basically stored in `/tmp/tg_cdn/` I recommend shorten the cache flush period(<1h).
 
 ## etc
 ### structure
@@ -35,7 +35,7 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 
 The maximum exportable file size via ```api.telegram.org/file/bot{bot_token}/{file_path}``` is **20 MB**.  
 The ```file_id``` is unique and static, but ```file_path``` is **not**.  
-You need to request updates from the Telegram server using the ```file_id```(check cache logic did it).  
+You need to request updates from the Telegram server using the ```file_id```(the check cache logic did it).  
 Officially, the ```file_path``` is guaranteed to remain valid for at least **one hour**.  
 [reference](https://core.telegram.org/bots/api#getfile)
 
