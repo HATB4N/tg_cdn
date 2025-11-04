@@ -71,7 +71,7 @@ Officially, the ```file_path``` is guaranteed to remain valid for at least **one
 | file_id | verchar(191) | YES | MUL | NULL | |
 | state | smallint(6) | NO | MUL | 0 | |
 | msg_id | int(11) | YES | MUL | NULL | |
-| bot_id | int(11) | YES | MUL | NULL | |
+| bot_id | smallint(6) | YES | MUL | NULL | |
 | created_at | timestamp | NO | MUL | current_timestamp() | |
 | updated_at | timestamp | YES | | NULL | on update current_timestamp() |
 
