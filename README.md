@@ -84,7 +84,7 @@ Officially, the ```file_path``` is guaranteed to remain valid for at least **one
 | Field | Type | Null | Key | Default | Extra |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | file_uuid | binary(16) | NO | PRI | NULL | |
-| file_path | varchar(50) | NO | | NULL | |
+| file_path | varchar(191) | NO | | NULL | |
 | bot_id | smallint(6) | NO | MUL | NULL | |
 | file_path_updated_at | timestamp | NO | | current_timestamp() | on update current_timestamp() |
 
