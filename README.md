@@ -78,7 +78,7 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | file_uuid | binary(16) | NO | PRI | NULL | |
 | file_path | varchar(50) | NO | | NULL | |
-| bot_id | int(small11) | NO | MUL | NULL | |
+| bot_id | smallint(6) | NO | MUL | NULL | |
 | file_path_updated_at | timestamp | NO | | current_timestamp() | on update current_timestamp() |
 
 *4 rows in set (0.004 sec)*
