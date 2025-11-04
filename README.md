@@ -26,7 +26,8 @@ channel id, bot token>= 1, db svr [mysql / mariadb]
 
 ## etc
 ### structure
-wip
+<img width="1310" height="875" alt="tgt_cdn drawio" src="https://github.com/user-attachments/assets/b3e21b07-4b1a-451c-acd7-503b087ff9f9" />
+
 
 ### tables
 
