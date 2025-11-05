@@ -21,10 +21,10 @@ cd tg_cdn
 ```
 
 ## req
-channel id, bot token>= 1(distributed)  
-db svr [mysql / mariadb](tested on mariadb 10.11)  
-recommend linux(tested on rocky linux 10)  
-temp file basically stored in `/tmp/tg_cdn/` I recommend shorten the cache flush period(<1h).
+- channel id, bot token>= 1(distributed)  
+- db svr [mysql / mariadb](tested on mariadb 10.11)  
+- recommend linux(tested on rocky linux 10)  
+- temp file basically stored in `/tmp/tg_cdn/` I recommend shorten the cache flush period(<1h).
 
 ## etc
 ### structure
