@@ -8,10 +8,11 @@ version = "0.1.0"
 description = "tg_cdn"
 dependencies = [
     "python-telegram-bot>=21.0",
-    "SQLAlchemy>=2.0",
     "aiomysql",
     "httpx",
     "fastapi",
     "uvicorn",
     "python-multipart",
+    "redis",
+    "uuid7",
 ]

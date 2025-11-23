@@ -2,11 +2,13 @@ import os
 import signal
 import asyncio
 import contextlib
+import aiomysql
 from contextlib import asynccontextmanager
 from . import Controller
 from . import SendTgbot
 from .api import create_app
-from .db import init_models, Session, Bot, select
+from . import db
+from .worker import DBWorker
 
 @asynccontextmanager
 async def lifespan(app: create_app):
@@ -19,16 +21,10 @@ async def lifespan(app: create_app):
 
     sbot_tokens = [t.strip() for t in sbot_tokens_str.split(',')]
 
-    await init_models()
-    bot_records = await asyncio.gather(*(get_or_create_bot(token) for token in sbot_tokens))
-
-    sbots = [SendTgbot.Tgbot(bot_id=bot.bot_id, token=bot.token, chat_id=int(sbot_chat_id)) for bot in bot_records]
-    apps = [b.build() for b in sbots]
-
     async def bootstrap_db(max_try=20, delay=1.5):
         for i in range(max_try):
             try:
-                await init_models()
+                await db.init_models()
                 print("[db] models ready")
                 return
             except Exception as e:
@@ -36,9 +32,25 @@ async def lifespan(app: create_app):
                 await asyncio.sleep(delay)
         raise RuntimeError("DB init failed")
 
-    await bootstrap_db()
+    try:
+        await db.init_db_pool() # 커낵션
+        await bootstrap_db() # create table
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize database: {e}")
+        exit()
 
-    ctr = Controller.Con(sbots=sbots)
+    db_worker_instance = DBWorker()
+    db_worker_task = asyncio.create_task(db_worker_instance.run())
+
+    bot_records = await asyncio.gather(*(get_or_create_bot(token) for token in sbot_tokens))
+
+    sbots = [SendTgbot.Tgbot(bot_id=bot['bot_id'], token=bot['bot_token'], chat_id=int(sbot_chat_id)) for bot in bot_records]
+    apps = [b.build() for b in sbots]
+
+    ctr = Controller.Con(
+        sbots=sbots,
+        db_queue=db_worker_instance.queue
+        )
     app.state.controller = ctr
     controller_task = asyncio.create_task(ctr.task())
 
@@ -56,21 +68,35 @@ async def lifespan(app: create_app):
         with contextlib.suppress(asyncio.CancelledError):
             await controller_task
 
-async def get_or_create_bot(token: str) -> Bot:
-    async with Session() as s:
-        async with s.begin():
-            result = await s.execute(select(Bot).where(Bot.token == token))
-            bot = result.scalar_one_or_none()
+        db_worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await db_worker_task
+        
+        await db.close_db_pool()
+
+
+async def get_or_create_bot(token: str) -> dict:
+    if not db.pool:
+        raise RuntimeError("Database pool is not initialized.")
+
+    async with db.pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            
+            # id -> token: static & unique
+            await cursor.execute("SELECT * FROM bots WHERE bot_token = %s", (token,))
+            bot = await cursor.fetchone()
+            
             if bot:
-                print(f"Found existing bot with ID: {bot.bot_id} for token.")
+                print(f"Found existing bot with ID: {bot['bot_id']} for token.")
                 return bot
             else:
                 print(f"Creating new bot for token.")
-                new_bot = Bot(token=token)
-                s.add(new_bot)
-                await s.flush()
-                print(f"Created new bot with ID: {new_bot.bot_id}")
-                return new_bot
+                await cursor.execute("INSERT INTO bots (bot_token) VALUES (%s)", (token,))
+                
+                new_bot_id = cursor.lastrowid
+                print(f"Created new bot with ID: {new_bot_id}")
+                
+                return {"bot_id": new_bot_id, "bot_token": token}
 
 app = create_app(None)
 app.router.lifespan_context = lifespan

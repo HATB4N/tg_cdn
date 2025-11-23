@@ -3,151 +3,182 @@ import os
 from typing import Tuple, Optional
 from . import SendTgbot
 import httpx
-from sqlalchemy import select, update, func
-from sqlalchemy.dialects.mysql import insert as mysql_insert
-from sqlalchemy.exc import NoResultFound
-from .db import Session, File, Bot, UrlCache
+import aiomysql
+from . import db
 from datetime import datetime, timedelta
+import redis.asyncio as redis
+import uuid
 
 class Con:
     _sbots: list[SendTgbot.Tgbot]
 
-    def __init__(self, sbots):
+    def __init__(self, sbots, db_queue: asyncio.Queue):
         self._sbots = sbots
-        self._assign_lock = asyncio.Lock()
+        self._redis = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+        self._db_queue = db_queue
 
     async def task(self):
-        print('task start')
-        temp_dir = "/tmp/tg_img_cdn" # env에서 읽어오게 수정
-        # 봇 할당 루프
+        # enum state descriptions
+        # state = 0: Init state
+        # state = 10: Assigned to bot worker
+        # state = 20: On uploading to Telegram server
+        # state = 30: Upload successfully & file_id, msg_id, etc recorded to queues
+        # state = 40: Inserted to files table & deleted tmp
+        # state = 100: error
         while True:
-            async with Session() as s:
-                async with s.begin():
-                    q = (
-                        select(File)
-                        .where(File.state == 0) # State 0 for new uploads
-                        .order_by(File.created_at.asc())
-                        .limit(10) # Process 10 at a time
-                        )
-                    docs = (await s.scalars(q)).all()
-                    for doc in docs:
-                        try:
-                            async with self._assign_lock:
-                                target_sbot = min(self._sbots, key=lambda b: (
-                                    b._q.qsize() + b.busy, id(b))
-                                    )
-                                # State 10 for assigned to bot
-                                res = await self._update_state(
-                                        file_uuid=doc.file_uuid, 
-                                        bot_id=target_sbot._bot_id, 
-                                        state=10, 
-                                        exp_state=[0]
-                                        )
-                                if res > 0:
-                                    temp_path = os.path.join(temp_dir, doc.file_uuid)
-                                    await target_sbot.add_file(
-                                            file_uuid=doc.file_uuid,
-                                            path=temp_path
-                                            )
-                        except Exception as e:
-                            print(f"Error assigning doc {doc.file_uuid}: {e}")
-
-            await asyncio.sleep(5) # Check for new docs every 5 seconds
-
-    async def handle_upload(self, file_uuid: str):
-        async with Session() as s:
-            async with s.begin():
-                new_file = File(
-                    file_uuid=file_uuid,
-                    state=0 # Initial state for new uploads
-                )
-                s.add(new_file)
-
-    async def _get_token(self, bot_id: int) -> str | None:
-        async with Session() as s:
-            result = await s.execute(
-                    select(Bot.token).where(Bot.bot_id == bot_id)
-                    )
-            token = result.scalar_one_or_none()
-            return token
-
-    async def get_path(self, file_uuid: str) -> str:
-        telegram_file_url = None
-
-        # file_uuid -> file_id, bot_id를 files에서 뽑아옴
-        async with Session() as s:
-            # check cache
-            cache_q = select(UrlCache).where(UrlCache.file_uuid == file_uuid)
-            cache_record = (await s.scalars(cache_q)).first()
-            if cache_record and (
-                    datetime.utcnow() - cache_record.file_path_updated_at < timedelta(hours=1)
-                    ):
-                token = await self._get_token(cache_record.bot_id)
-                if token:
-                    telegram_file_url = f'https://api.telegram.org/file/bot{token}/{cache_record.file_path}'
-            file_q = select(File).where(File.file_uuid == file_uuid)
             try:
-                file_record = (await s.scalars(file_q)).one()
-            except NoResultFound:
-                return None
-            if file_record.file_id is None or file_record.bot_id is None:
-                return None
-        
-            token = await self._get_token(file_record.bot_id)
-            if not token:
-                raise ValueError(f"Token for bot_id {file_record.bot_id} not found")
-            
-            file_id = file_record.file_id
-            bot_id = file_record.bot_id
+                if db.pool:
+                    async with db.pool.acquire() as conn:
+                        await conn.begin()
+                        try:
+                            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                                # Init cnt
+                                cnt_10, cnt_20, cnt_30, cnt_40, cnt_100 = 0, 0, 0, 0, 0
 
-            # chech fail, get file_path from tg svr
-            if not telegram_file_url:
-                async with httpx.AsyncClient() as client:
-                    url = f'https://api.telegram.org/bot{token}/getFile'
-                    resp = await client.get(url, params={"file_id": file_id})
-                    resp.raise_for_status()
-                    data = resp.json()
-                    file_path = data['result']['file_path']
+                                # 1: UNDO STATE 10 | 20 > 10min
+                                await cursor.execute("SELECT file_uuid, state FROM queues WHERE state IN (10, 20) AND updated_at < NOW() - INTERVAL 10 MINUTE")
+                                stale_undo_jobs = await cursor.fetchall()
+                                if stale_undo_jobs:
+                                    uuids_to_undo_10 = [j['file_uuid'] for j in stale_undo_jobs if j['state'] == 10]
+                                    uuids_to_undo_20 = [j['file_uuid'] for j in stale_undo_jobs if j['state'] == 20]
+                                    cnt_10, cnt_20 = len(uuids_to_undo_10), len(uuids_to_undo_20)
+                                    
+                                    all_uuids = uuids_to_undo_10 + uuids_to_undo_20
+                                    if all_uuids:
+                                        placeholders = ', '.join(['%s'] * len(all_uuids))
+                                        undo_query = f"UPDATE queues SET state = 0, bot_id = NULL, updated_at = NOW() WHERE file_uuid IN ({placeholders})"
+                                        await cursor.execute(undo_query, tuple(all_uuids))
+                                        print(f"[Controller GC] Reset {len(all_uuids)} stale jobs (State 10, 20).")
 
-                if not file_path:
-                    return None
+                                # 2: REDO STATE 30
+                                await cursor.execute("SELECT file_uuid, file_id, msg_id, bot_id FROM queues WHERE state = 30 AND updated_at < NOW() - INTERVAL 10 MINUTE")
+                                stale_redo_jobs = await cursor.fetchall()
+                                if stale_redo_jobs:
+                                    cnt_30 = len(stale_redo_jobs)
+                                    print(f"[Controller GC] Re-committing {cnt_30} stuck jobs (State 30).")
+                                    for job in stale_redo_jobs:  # fix
+                                        file_uuid_bytes, file_uuid_str = job['file_uuid'], str(uuid.UUID(bytes=job['file_uuid']))
+                                        try:
+                                            await cursor.execute("INSERT INTO files (file_uuid, file_id, msg_id, bot_id) VALUES (%s, %s, %s, %s)",
+                                                                 (file_uuid_bytes, job['file_id'], job['msg_id'], job['bot_id']))
+                                            await cursor.execute("UPDATE queues SET state = 40, updated_at = NOW() WHERE file_uuid = %s AND state = 30", (file_uuid_bytes,))
+                                        except Exception as e:
+                                            print(f"[Controller GC] Error re-committing job {file_uuid_str}: {e}")
+                                
+                                # 3: UNDO STATE 100
+                                await cursor.execute("SELECT file_uuid FROM queues WHERE state = 100")
+                                failed_jobs = await cursor.fetchall()
+                                if failed_jobs:
+                                    cnt_100 = len(failed_jobs)
+                                    uuids_to_retry = [job['file_uuid'] for job in failed_jobs]
+                                    placeholders = ', '.join(['%s'] * len(uuids_to_retry))
+                                    retry_query = f"UPDATE queues SET state = 0, updated_at = NOW() WHERE file_uuid IN ({placeholders})"
+                                    await cursor.execute(retry_query, tuple(uuids_to_retry))
+                                    print(f"[Controller GC] Retrying {cnt_100} failed jobs (State 100).")
+
+                                # 4: DELETE STATE 40
+                                await cursor.execute("DELETE FROM queues WHERE state = 40")
+                                cnt_40 = cursor.rowcount
+                                if cnt_40 > 0:
+                                    print(f"[Controller GC] Deleted {cnt_40} processed jobs.")
+
+                                # 5: LOGGING
+                                if (cnt_10 + cnt_20 + cnt_30 + cnt_40 + cnt_100) > 0:
+                                    await cursor.execute(
+                                        "INSERT INTO gc_runs (cnt_10, cnt_20, cnt_30, cnt_40, cnt_100) VALUES (%s, %s, %s, %s, %s)",
+                                        (cnt_10, cnt_20, cnt_30, cnt_40, cnt_100)
+                                    )
+                                    print(f"[Controller GC] Logged GC run summary.")
+                            
+                            await conn.commit()
+
+                        except Exception as e:
+                            await conn.rollback()
+                            print(f"[Controller GC] Error during transaction: {e}")
+            except Exception as e:
+                print(f"[Controller GC] Error in task loop: {e}")
+
+            # GC sleeps an hour
+            await asyncio.sleep(3600)
+
+    # redis?
+    async def _get_token(self, bot_id: int) -> str | None:
+        # L1...?
+        bot_token = await self._redis.get(str(bot_id))
+        if bot_token:
+            return bot_token
+
+        if not db.pool:
+            raise RuntimeError("Database pool is not initialized.")
+        async with db.pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
                 
-                telegram_file_url = f'https://api.telegram.org/file/bot{token}/{file_path}'
-
-                # update cache
-                upsert_stmt = mysql_insert(UrlCache).values(
-                    file_uuid=file_uuid, 
-                    file_path=file_path,
-                    bot_id=file_record.bot_id,
-                    file_path_updated_at=datetime.utcnow()
+                await cursor.execute(
+                    """
+                    SELECT bot_token
+                    FROM bots
+                    WHERE bot_id = %s
+                    """, (bot_id,)
                 )
-                upsert_stmt = upsert_stmt.on_duplicate_key_update(
-                    file_path=upsert_stmt.inserted.file_path,
-                    bot_id=upsert_stmt.inserted.bot_id,
-                    file_path_updated_at=upsert_stmt.inserted.file_path_updated_at
-                )
-                await s.execute(upsert_stmt)
-                await s.commit()
+                
+                result = await cursor.fetchone()
+                bot_token = result['bot_token'] if result else None
+                if(bot_token):
+                    await self._redis.setex(str(bot_id), 999999999, bot_token)
+                    return bot_token
+                return None
 
-        # serve final link
-        if not telegram_file_url:
-             return None
+    async def get_cache(self, file_uuid: str) -> str | None:
+        # L1: redis
+        telegram_file_url = await self._redis.get(file_uuid)
+        if telegram_file_url:
+            return telegram_file_url
+        
+        # L2: url_caches
+        url_cache_repo = db.UrlCacheRepository()
+        url_cache_result = await url_cache_repo.get_url_cache_by_uuid(file_uuid)
+        
+        if url_cache_result:
+            telegram_file_url = await self._get_telegram_file_url(
+                url_cache_result["bot_token"],
+                url_cache_result['file_id']
+            )
 
-        return telegram_file_url
+            # generate L1
+            await self._redis.setex(file_uuid, 3600, telegram_file_url)
+            return telegram_file_url
+                
+        # L3: files, etc
+        files_repo = db.FilesRepository()
+        file_result = await files_repo.get_file_by_uuid(file_uuid)
+        if file_result:
+            bot_id = int(file_result['bot_id'])
+            file_id = file_result['file_id']
+            bot_token = await self._get_token(bot_id)
+            if not bot_token: return None
+            
+            # generate L1
+            telegram_file_url = await self._get_telegram_file_url(bot_token, file_id)
+            await self._redis.setex(file_uuid, 3600, telegram_file_url)
+            
+            # generate L2
+            # stateless -> stateless (lockfree)
+            db_task = {
+                "query": "INSERT IGNORE INTO url_caches (file_uuid, file_id, bot_token) VALUES (%s, %s, %s)",
+                "params": (uuid.UUID(file_uuid).bytes, file_id, bot_token)
+            }
+            try:
+                self._db_queue.put_nowait(db_task) # offload
+            except asyncio.QueueFull:
+                pass # ignore(anyway ensure redis cache)
+            return telegram_file_url
+        return None
 
-    async def _update_state(self, file_uuid: str, bot_id: int, state: int, exp_state: list[int]) -> int:
-        """
-        if doc.state = exp_state : doc.state == state
-        """
-        async with Session() as s:
-            async with s.begin():
-                res = await s.execute(
-                    update(File)
-                    .where(File.file_uuid == file_uuid, File.state.in_(exp_state))
-                    .values(
-                        state=state,
-                        bot_id=bot_id,
-                        updated_at=func.now()
-                    )
-                )
-                return res.rowcount
+    async def _get_telegram_file_url(self, bot_token: str, file_id: str) -> str:
+        async with httpx.AsyncClient() as client:
+            url = f'https://api.telegram.org/bot{bot_token}/getFile'
+            resp = await client.get(url, params={"file_id": file_id})
+            resp.raise_for_status()
+            data = resp.json()
+            file_path = data['result']['file_path']
+            return f'https://api.telegram.org/file/bot{bot_token}/{file_path}'

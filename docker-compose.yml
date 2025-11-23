@@ -8,5 +8,26 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - /tmp/tg_img_cdn:/tmp/tg_img_cdn
+      - ./tmp:/app/tmp
+    depends_on:
+      - redis
 
+  redis:
+    image: redis:latest
+    container_name: tg_cdn_redis
+    networks:
+      - app-network
+  
+  # # optional
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel --no-autoupdate run --token [token] --protocol quic
+  #   depends_on:
+  #     - tg_cdn
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+
+networks:
+  app-network:
+    driver: bridge
