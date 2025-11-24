@@ -70,12 +70,15 @@ CREATE TABLE IF NOT EXISTS queues (
     state SMALLINT NOT NULL DEFAULT 0,
     msg_id INT NULL,
     bot_id SMALLINT NULL,
+    retry_count SMALLINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    available_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (bot_id) REFERENCES bots(bot_id),
-    INDEX idx_state (state)
-    INDEX idx_upd (state)
+    INDEX idx_state (state),
+    INDEX idx_upd (updated_at),
+    INDEX idx_avl (available_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 

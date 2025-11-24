@@ -11,6 +11,12 @@ import uuid
 
 class Con:
     _sbots: list[SendTgbot.Tgbot]
+    MIN_JITTER_VALUE = 1
+    MAX_JITTER_VALUE = 5
+    # MAX_RETRY = 10 
+    # TODO
+    # (이거 넘으면 cnt = 999등으로 버리거나, 갱신 시간 늘리지 않도록)
+    # 일단은 LEAST(POW(2, retry_count), 3000) 정도?
 
     def __init__(self, sbots, db_queue: asyncio.Queue):
         self._sbots = sbots
@@ -35,7 +41,7 @@ class Con:
                                 # Init cnt
                                 cnt_10, cnt_20, cnt_30, cnt_40, cnt_100 = 0, 0, 0, 0, 0
 
-                                # 1: UNDO STATE 10 | 20 > 10min
+                                # 1: UNDO STATE 10 | 20 > 10min w/ Jitter
                                 await cursor.execute("SELECT file_uuid, state FROM queues WHERE state IN (10, 20) AND updated_at < NOW() - INTERVAL 10 MINUTE")
                                 stale_undo_jobs = await cursor.fetchall()
                                 if stale_undo_jobs:
@@ -46,7 +52,18 @@ class Con:
                                     all_uuids = uuids_to_undo_10 + uuids_to_undo_20
                                     if all_uuids:
                                         placeholders = ', '.join(['%s'] * len(all_uuids))
-                                        undo_query = f"UPDATE queues SET state = 0, bot_id = NULL, updated_at = NOW() WHERE file_uuid IN ({placeholders})"
+                                        undo_query = f"""
+                                            UPDATE queues 
+                                            SET 
+                                                state = 0, 
+                                                bot_id = NULL, 
+                                                updated_at = NOW(), 
+                                                available_at = NOW() + INTERVAL (
+                                                    {Con.MIN_JITTER_VALUE} 
+                                                    + RAND() * ({Con.MAX_JITTER_VALUE} - {Con.MIN_JITTER_VALUE})
+                                                ) SECOND 
+                                            WHERE file_uuid IN ({placeholders})
+                                        """
                                         await cursor.execute(undo_query, tuple(all_uuids))
                                         print(f"[Controller GC] Reset {len(all_uuids)} stale jobs (State 10, 20).")
 
@@ -65,14 +82,26 @@ class Con:
                                         except Exception as e:
                                             print(f"[Controller GC] Error re-committing job {file_uuid_str}: {e}")
                                 
-                                # 3: UNDO STATE 100
+                                # 3: UNDO STATE 100 w/ Exponential Backoff with Jitter
                                 await cursor.execute("SELECT file_uuid FROM queues WHERE state = 100")
                                 failed_jobs = await cursor.fetchall()
                                 if failed_jobs:
                                     cnt_100 = len(failed_jobs)
                                     uuids_to_retry = [job['file_uuid'] for job in failed_jobs]
                                     placeholders = ', '.join(['%s'] * len(uuids_to_retry))
-                                    retry_query = f"UPDATE queues SET state = 0, updated_at = NOW() WHERE file_uuid IN ({placeholders})"
+                                    retry_query = f"""
+                                        UPDATE queues 
+                                        SET 
+                                            state = 0, 
+                                            updated_at = NOW(), 
+                                            retry_count = retry_count + 1, 
+                                            available_at = NOW() + INTERVAL (
+                                                LEAST(POW(2, retry_count), 3000) - 1 
+                                                + {Con.MIN_JITTER_VALUE} 
+                                                + (RAND() * ({Con.MAX_JITTER_VALUE} - {Con.MIN_JITTER_VALUE}))
+                                            ) SECOND 
+                                        WHERE file_uuid IN ({placeholders})
+                                    """
                                     await cursor.execute(retry_query, tuple(uuids_to_retry))
                                     print(f"[Controller GC] Retrying {cnt_100} failed jobs (State 100).")
 

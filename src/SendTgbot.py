@@ -107,7 +107,7 @@ class Tgbot:
                         """
                         SELECT file_uuid
                         FROM queues
-                        WHERE state = 0
+                        WHERE state = 0 AND available_at <= NOW()
                         ORDER BY created_at ASC
                         LIMIT %s
                         FOR UPDATE SKIP LOCKED
