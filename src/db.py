@@ -7,10 +7,10 @@ from datetime import datetime
 import pymysql.converters
 
 user = os.getenv("DB_USER", "tg_cdn_db_user")
-pwd  = os.getenv("DB_PASSWORD", "password")
+pwd = os.getenv("DB_PASSWORD", "password")
 host = os.getenv("DB_HOST", "localhost")
 port = int(os.getenv("DB_PORT", 3306))
-db   = os.getenv("DB_DATABASE", "tg_cdn_db")
+db = os.getenv("DB_DATABASE", "tg_cdn_db")
 
 pymysql.converters.conversions[uuid.UUID] = pymysql.converters.escape_bytes
 
@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS queues (
     
     FOREIGN KEY (bot_id) REFERENCES bots(bot_id),
     INDEX idx_state (state)
+    INDEX idx_upd (state)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
@@ -93,11 +94,11 @@ SQL_CREATE_GC_RUNS = """
 CREATE TABLE IF NOT EXISTS gc_runs (
     run_id INT AUTO_INCREMENT PRIMARY KEY,
     run_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cnt_10 INT DEFAULT 0,
-    cnt_20 INT DEFAULT 0,
-    cnt_30 INT DEFAULT 0,
-    cnt_40 INT DEFAULT 0,
-    cnt_100 INT DEFAULT 0
+    cnt_10 SMALLINT DEFAULT 0,
+    cnt_20 SMALLINT DEFAULT 0,
+    cnt_30 SMALLINT DEFAULT 0,
+    cnt_40 SMALLINT DEFAULT 0,
+    cnt_100 SMALLINT DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
