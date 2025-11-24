@@ -1,6 +1,7 @@
 import asyncio
 from telegram import Bot
 from telegram.ext import ApplicationBuilder
+from telegram.error import RetryAfter
 import aiomysql
 from . import db
 import uuid
@@ -14,6 +15,7 @@ class Tgbot:
     len_q: int
     busy: bool
     batch_size: int
+    MAX_FLOOD_RETRIES = 5
 
     def __init__(self, bot_id: int, token: str, chat_id: str, batch_size: int = 10):
         self._bot_id = bot_id
@@ -84,16 +86,26 @@ class Tgbot:
     
     async def _send_file(self, path: str, caption: str):
         bot = self._app.bot
-        with open(path, "rb") as f:
-            msg = await bot.send_document(
-                    chat_id=self._chat_id,
-                    document = f,
-                    caption = caption,
-                    read_timeout = 60,
-                    write_timeout = 60,
-                    connect_timeout = 60
-                    )
-        return msg.message_id, msg.document.file_id
+        for attempt in range(self.MAX_FLOOD_RETRIES):
+            try:
+                with open(path, "rb") as f:
+                    msg = await bot.send_document(
+                            chat_id=self._chat_id,
+                            document = f,
+                            caption = caption,
+                            read_timeout = 60,
+                            write_timeout = 60,
+                            connect_timeout = 60
+                            )
+                return msg.message_id, msg.document.file_id
+            except RetryAfter as e:
+                print(f"sbot[{self._bot_id}]: Flood control exceeded for file {path}. Waiting for {e.retry_after}s. Attempt {attempt+1}/{MAX_FLOOD_RETRIES}")
+                await asyncio.sleep(e.retry_after)
+            except Exception as e:
+                # 스코프에서 버려 ㅇㅇ
+                raise e
+        
+        raise Exception(f"Failed to send file {path} after {self.MAX_FLOOD_RETRIES} flood control retries.")
         
     async def _fetch_and_claim_jobs(self) -> list[dict]:
         if not db.pool:
