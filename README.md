@@ -90,7 +90,7 @@ Officially, the ```file_path``` is guaranteed to remain valid for at least **one
 | cnt_40 | smallint(6) | YES | | 0 | |
 | cnt_100 | smallint(6) | YES | | 0 | |
 
-*4 rows in set (0.020 sec)*
+*7 rows in set (0.081 sec)*
 
 ---
 
@@ -103,10 +103,12 @@ Officially, the ```file_path``` is guaranteed to remain valid for at least **one
 | state | smallint(6) | NO | MUL | 0 | |
 | msg_id | int(11) | YES | | NULL | |
 | bot_id | smallint(6) | YES | MUL | NULL | |
+| retry_count | smallint(6) | NO | | 0 | |
 | created_at | timestamp | YES | | current_timestamp() | |
 | updated_at | timestamp | YES| | NULL | on update current_timestamp() |
+| available_at | timestamp | YES | | current_timestamp() | |
 
-*7 rows in set (0.011 sec)*
+*9 rows in set (0.081 sec)*
 
 ---
 
