@@ -76,7 +76,6 @@ class Tgbot:
                         except Exception as e2:
                             print(f"sbot[{self._bot_id}]: fail mark error:", e2)
                     finally:
-                        await asyncio.sleep(1)
                         self.busy = False  
 
         except asyncio.CancelledError:
