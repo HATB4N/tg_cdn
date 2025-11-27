@@ -9,6 +9,7 @@ from . import SendTgbot
 from .api import create_app
 from . import db
 from .worker import DBWorker
+import httpx
 
 @asynccontextmanager
 async def lifespan(app: create_app):
@@ -47,12 +48,19 @@ async def lifespan(app: create_app):
     sbots = [SendTgbot.Tgbot(bot_id=bot['bot_id'], token=bot['bot_token'], chat_id=int(sbot_chat_id)) for bot in bot_records]
     apps = [b.build() for b in sbots]
 
+    http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+            timeout=httpx.Timeout(30.0, connect=5.0)
+            )
+
     ctr = Controller.Con(
         sbots=sbots,
-        db_queue=db_worker_instance.queue
+        db_queue=db_worker_instance.queue,
+        http_client=http_client
         )
     app.state.controller = ctr
     controller_task = asyncio.create_task(ctr.task())
+    app.state.http_client = http_client
 
     await asyncio.gather(*(app.initialize() for app in apps))
     await asyncio.gather(*(app.start() for app in apps))

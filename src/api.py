@@ -9,10 +9,17 @@ import os
 import uuid
 from uuid_extensions import uuid7
 from typing import Dict, Any
+import aiofiles
 
-def create_app(ctr_instance):
+TEMP_DIR = "./tmp"
+MAX_FILE_SIZE_MB = 20
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_MIMETYPES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'
+}
+
+def create_app(lifespan_context=None):
     app = FastAPI()
-    app.state.controller = ctr_instance
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
@@ -58,59 +65,57 @@ def create_app(ctr_instance):
     @app.post("/upload")
     async def upload(request: Request, file: UploadFile = File(...)):
 
-        ret_err = JSONResponse(content={
+        def ret_err(code):
+            return JSONResponse(content={
             'result': '-1',
             'file_uuid': '-1'
-            }, status_code = 400)
+            }, status_code = code)
 
         if not file:
-            return ret_err # 400
+            return ret_err(400)
 
-        # check mimetype
-        allowed_mimetypes = [
-            'image/jpeg',
-            'image/png',
-            'image/gif',
-            'image/webp',
-            'image/bmp'
-        ]
+        if file.content_type not in ALLOWED_MIMETYPES:
+            return ret_err(415)
 
-        if file.content_type not in allowed_mimetypes:
-            return ret_err # 415
+        try:
+            initial_chunk = await file.read(1024) # test
+            await file.seek(0)
+        except Exception:
+            return ret_err(400)
 
-        initial_chunk = await file.read(1024) # test
-        await file.seek(0)
-
-        sniffed_mime = _sniff_image_mime(initial_chunk)
-        if sniffed_mime not in allowed_mimetypes:
-            return ret_err # 415
+        if _sniff_image_mime(initial_chunk) not in ALLOWED_MIMETYPES:
+            return ret_err(415)
 
         # uuid7으로
         file_uuid = str(uuid7(as_type="str"))
+        temp_path = os.path.join(TEMP_DIR, file_uuid)
 
-        temp_dir = "./tmp"
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, file_uuid)
-        
-        with open(temp_path, 'wb') as f:
-            while content := await file.read(1024):
-                f.write(content)
+        acc_sz = 0
 
-        file_size = os.path.getsize(temp_path)
-        max_file_size_mb = 20 # file up to 20MB 
-        max_file_size_bytes = max_file_size_mb * 1024 * 1024
-
-        if file_size > max_file_size_bytes:
-            os.remove(temp_path) # Delete the large file
-            return ret_err # 413
-
-        # ctr중계 없이 여기서 db 쿼리 직접 날려
-        await _handle_upload(file_uuid)
-
-        return JSONResponse(content={
-                    'result': '1', 
-                    'file_uuid': file_uuid 
-                    }, status_code=200)
+        try:
+            async with aiofiles.open(temp_path, 'wb') as f:
+                while True:
+                    chunk = await file.read(1024*64)
+                    if not chunk:
+                        break
+                    # accumulate sz during download client's file upd
+                    acc_sz += len(chunk)
+                    if acc_sz> MAX_FILE_SIZE_BYTES:
+                        raise HTTPException(status_code = 413)
+                    await f.write(chunk)
+            try:
+                await _handle_upload(file_uuid)
+            except Exception as e:
+                print(f'[API]: db err {e}')
+                return ret_err(500)
+            return JSONResponse(content={
+                        'result': '1', 
+                        'file_uuid': file_uuid 
+                        }, status_code=200)
+        except HTTPException as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return ret_err(e.status_code)
 
     @app.get('/content/{file_uuid}')
     async def content(file_uuid: str, request: Request):
@@ -125,60 +130,51 @@ def create_app(ctr_instance):
                 content={"detail": "File not found. It may be in processing or the UUID is invalid."}
             )
 
-        client = httpx.AsyncClient()
+        client: httpx.AsyncClient = request.app.state.http_client
+        req = client.build_request("GET", target)
         try:
-            # 수정됨: client.stream(...) 대신 request를 빌드하고 send(stream=True) 사용
-            # stream context manager 밖에서도 response 객체를 유지하기 위함입니다.
-            req = client.build_request("GET", target)
             upstream_response = await client.send(req, stream=True)
-
-            if upstream_response.status_code >= 400:
-                await upstream_response.aclose()
-                await client.aclose()
-                return JSONResponse(
-                    status_code=upstream_response.status_code,
-                    content={"detail": "Upstream server returned an error."}
-                )
-
-            byte_iterator = upstream_response.aiter_bytes()
-            
-            try:
-                first_chunk = await byte_iterator.__anext__()
-            except StopAsyncIteration:
-                first_chunk = b''
-            
-            mime_type = _sniff_image_mime(first_chunk)
-
-            async def content_generator():
-                try:
-                    if first_chunk:
-                        yield first_chunk
-                    async for chunk in byte_iterator:
-                        yield chunk
-                finally:
-                    # 스트리밍이 끝나거나 클라이언트 연결이 끊기면 리소스 정리
-                    await upstream_response.aclose()
-                    await client.aclose()
-
-            headers = {
-                'Content-Disposition': f'inline; filename="{file_uuid}"',
-                'Cache-Control': 'public, max-age=8640000',
-                'Access-Control-Allow-Origin': "*"
-            }
-
-            return StreamingResponse(
-                content_generator(), 
-                headers=headers, 
-                media_type=mime_type
-            )
-        
         except httpx.RequestError as e:
             print(f"Request error to upstream: {e}")
-            await client.aclose()
             return JSONResponse(status_code=504, content={"detail": "Could not connect to upstream server."})
-        except Exception as e:
-            print(f"Error setting up stream: {e}")
-            await client.aclose()
-            return JSONResponse(status_code=500, content={"detail": "An unexpected internal error occurred."})
+        if upstream_response.status_code >= 400:
+            await upstream_response.aclose()
+            return JSONResponse(
+                status_code=upstream_response.status_code,
+                content={"detail": "Upstream server returned an error."}
+            )
+
+        byte_iterator = upstream_response.aiter_bytes()
+        
+        try:
+            first_chunk = await byte_iterator.__anext__()
+        except StopAsyncIteration:
+            first_chunk = b''
+            await upstream_response.aclose()
+            return JSONResponse(status_code=204, content={})
+        
+        mime_type = _sniff_image_mime(first_chunk)
+
+        async def content_generator():
+            try:
+                yield first_chunk
+                async for chunk in byte_iterator:
+                    yield chunk
+            except Exception as e:
+                pass
+            finally:
+                await upstream_response.aclose()
+
+        headers = {
+            'Content-Disposition': f'inline; filename="{file_uuid}"',
+            'Cache-Control': 'public, max-age=8640000',
+            'Access-Control-Allow-Origin': "*"
+        }
+
+        return StreamingResponse(
+            content_generator(), 
+            headers=headers, 
+            media_type=mime_type
+        )
 
     return app

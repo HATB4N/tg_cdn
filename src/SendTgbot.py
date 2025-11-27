@@ -99,7 +99,7 @@ class Tgbot:
                             )
                 return msg.message_id, msg.document.file_id
             except RetryAfter as e:
-                print(f"sbot[{self._bot_id}]: Flood control exceeded for file {path}. Waiting for {e.retry_after}s. Attempt {attempt+1}/{MAX_FLOOD_RETRIES}")
+                print(f"sbot[{self._bot_id}]: Flood control exceeded for file {path}. Waiting for {e.retry_after}s. Attempt {attempt+1}/{self.MAX_FLOOD_RETRIES}")
                 await asyncio.sleep(e.retry_after)
             except Exception as e:
                 # 스코프에서 버려 ㅇㅇ

@@ -18,10 +18,11 @@ class Con:
     # (이거 넘으면 cnt = 999등으로 버리거나, 갱신 시간 늘리지 않도록)
     # 일단은 LEAST(POW(2, retry_count), 3000) 정도?
 
-    def __init__(self, sbots, db_queue: asyncio.Queue):
+    def __init__(self, sbots, db_queue: asyncio.Queue, http_client: httpx.AsyncClient):
         self._sbots = sbots
         self._redis = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
         self._db_queue = db_queue
+        self._http_client = http_client
 
     async def task(self):
         # enum state descriptions
@@ -59,8 +60,8 @@ class Con:
                                                 bot_id = NULL, 
                                                 updated_at = NOW(), 
                                                 available_at = NOW() + INTERVAL (
-                                                    {Con.MIN_JITTER_VALUE} 
-                                                    + RAND() * ({Con.MAX_JITTER_VALUE} - {Con.MIN_JITTER_VALUE})
+                                                    {self.MIN_JITTER_VALUE} 
+                                                    + RAND() * ({self.MAX_JITTER_VALUE} - {self.MIN_JITTER_VALUE})
                                                 ) SECOND 
                                             WHERE file_uuid IN ({placeholders})
                                         """
@@ -96,9 +97,9 @@ class Con:
                                             updated_at = NOW(), 
                                             retry_count = retry_count + 1, 
                                             available_at = NOW() + INTERVAL (
-                                                LEAST(POW(2, retry_count), 3000) - 1 
-                                                + {Con.MIN_JITTER_VALUE} 
-                                                + (RAND() * ({Con.MAX_JITTER_VALUE} - {Con.MIN_JITTER_VALUE}))
+                                                LEAST(POW(2, retry_count)-1, 3000)
+                                                + {self.MIN_JITTER_VALUE} 
+                                                + (RAND() * ({self.MAX_JITTER_VALUE} - {self.MIN_JITTER_VALUE}))
                                             ) SECOND 
                                         WHERE file_uuid IN ({placeholders})
                                     """
@@ -204,10 +205,9 @@ class Con:
         return None
 
     async def _get_telegram_file_url(self, bot_token: str, file_id: str) -> str:
-        async with httpx.AsyncClient() as client:
-            url = f'https://api.telegram.org/bot{bot_token}/getFile'
-            resp = await client.get(url, params={"file_id": file_id})
-            resp.raise_for_status()
-            data = resp.json()
-            file_path = data['result']['file_path']
-            return f'https://api.telegram.org/file/bot{bot_token}/{file_path}'
+        url = f'https://api.telegram.org/bot{bot_token}/getFile'
+        resp = await self._http_client.get(url, params={"file_id": file_id})
+        resp.raise_for_status()
+        data = resp.json()
+        file_path = data['result']['file_path']
+        return f'https://api.telegram.org/file/bot{bot_token}/{file_path}'

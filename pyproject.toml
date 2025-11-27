@@ -15,4 +15,5 @@ dependencies = [
     "python-multipart",
     "redis",
     "uuid7",
+    import aiofiles,
 ]
