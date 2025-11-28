@@ -1,0 +1,60 @@
+# for those who doesn't have db svr
+# !!important!!
+# fix .env
+# DB_HOST=db
+
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: tg_img_cdn_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./tmp:/app/tmp
+    depends_on:
+      - redis
+      - db
+    networks:
+      - app-network
+
+  redis:
+    image: redis:latest
+    container_name: tg_cdn_redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  db:
+    image: mariadb:10.11
+    container_name: tg_cdn_db
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword} # .env에 없으면 기본값 사용 설정
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_unicode_ci"
+      - "--default-time-zone=+09:00"
+      - "--innodb_flush_log_at_trx_commit=1"
+      - "--binlog_format=ROW"
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  dbdata:
+
+networks:
+  app-network:
+    driver: bridge
