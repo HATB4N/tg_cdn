@@ -15,12 +15,13 @@
 ```bash
 git clone https://github.com/HATB4N/tg_cdn.git
 cd tg_cdn
+# check out docker-compose-standalone.yml
 # fix .env
 sudo docker compose up --build
 ```
 ### req
-- channel id, bot token>= 1 (distributed)  
-- db svr [mysql / mariadb] (tested on mariadb 10.11 w/ rocky linux 10)  
+- channel id = 1, bot token>= 1 (distributed)  
+- (optional) db svr [mysql / mariadb] (tested on mariadb 10.11 w/ rocky linux 10)  
 
 ## etc
 ### structure (legacy)
