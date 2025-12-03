@@ -85,8 +85,8 @@ CREATE TABLE IF NOT EXISTS queues (
 SQL_CREATE_URL_CACHES = """
 CREATE TABLE IF NOT EXISTS url_caches (
     file_uuid BINARY(16) PRIMARY KEY,
-    file_id VARCHAR(191) NULL,
-    bot_token VARCHAR(50) NULL,
+    file_id VARCHAR(191) NOT NULL,
+    bot_token VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (file_uuid) REFERENCES files(file_uuid) ON DELETE CASCADE
