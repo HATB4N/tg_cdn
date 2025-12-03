@@ -26,7 +26,8 @@ sudo docker compose up --build
 ## etc
 ### structure (legacy)
 <img width="1000" height="711" alt="tg_cdn_structure" src="https://github.com/user-attachments/assets/d8c834cd-28da-4c62-ba39-d9bff7e78d14" />
-<img width="1000" height="453" alt="image" src="https://github.com/user-attachments/assets/06755dc3-59ec-4d9c-ba08-6e17357adaba" />
+<img width="1000" height="453" alt="image" src="https://github.com/user-attachments/assets/716aa968-93b9-4a05-93b3-bac6e9195b68" />
+
 
 
 ---
