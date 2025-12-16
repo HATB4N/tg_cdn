@@ -1,7 +1,7 @@
 # tg_cdn
 2025 2nd Semester Database Project
 
-## abstract
+## Abstract
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/docker-compose-blue)](https://www.docker.com/)
 [![Database](https://img.shields.io/badge/MariaDB-10.11-orange)](https://mariadb.org/)
@@ -12,13 +12,14 @@ This project implements a low-cost, self-hostable image hosting service by utili
 
 <img width="348" height="66" alt="image" src="https://github.com/user-attachments/assets/ddf97363-2044-4fe4-8618-dcfecbaa796e" />
 
-## example usage
+## Example Usages
 - self host website img backend
 - *individual* bulk crawling image backend (*I don't know the criteria for bulk, but I've processed about 50-60k imgs per day (peak @ over 5k/h with 5bots) on a regular home svr*)
 - idk. anyway you can upload & retrive imgs if you want
 
-### test vectors
+### Test Vectors
 ```python
+# crawler example
 content_type = f"image/{image_type}"
 if not content_type.startswith("image"):
     raise ValueError(f"[type err] input var: '{content_type}' (must start with 'image')")
@@ -35,28 +36,54 @@ if not content_type.startswith("image"):
 else:
 #...
 ```
+```python
+# more polite example written by AI
+import requests
+
+# 1. Upload
+url = "http://localhost:8000/upload" # Change to your server address
+files = {'file': open('example.jpg', 'rb')}
+
+try:
+    response = requests.post(url, files=files)
+    response.raise_for_status()
+    
+    result = response.json()
+    if result.get("result") == "1":
+        uuid = result['file_uuid']
+        print(f"Upload Success! UUID: {uuid}")
+        print(f"Access Link: http://localhost:8000/content/{uuid}")
+    else:
+        print(f"Upload Failed: {result}")
+
+except Exception as e:
+    print(f"Error: {e}")
+```
 ```html
-<img src="https://example.com/content/uuid>
+<img src="https://example.com/content/uuid">
 ```
 ```sh
+# Upload a file (Returns JSON with UUID)
 curl -X POST -F "file=@/path/to/file" https://example.com/upload
+
+# resp: {"result":"1","file_uuid":"<uuid>"}⏎
+
+# Retrieve and display in terminal (using chafa)
 curl -s https://example.com/content/<uuid> | chafa
 ```
 <img width="1000" height="795" alt="image" src="https://github.com/user-attachments/assets/7c542d58-8f4e-4a80-9f6e-fd26405cd7e4" />
 
-
-
-## api
-### upload
+## API
+### Upload
 - endpoint: `/upload`
 - method: `POST` with img file
 - body: `{ "result": "1", "file_uuid": "<uuid>" }` or err json with result != 1
-### retrive
+### Retrive
 - endpoint: `/content/<uuid>`
 - method: `GET`
 - body: `raw img bin data with appropriate mimetype` or err json
 
-## install & build
+## Install & Build
 ```bash
 git clone https://github.com/HATB4N/tg_cdn.git
 cd tg_cdn
@@ -64,13 +91,13 @@ cd tg_cdn
 # fix .env
 sudo docker compose up --build
 ```
-### req
-- channel id = 1, bot token>= 1 (distributed)
-  - You should invite bots & assign administrator privileges
+### Requirements
+- channel id = 1, bot token>= 1 (distributed bot workers)
+  - You should invite bots & assign them administrator privileges
 - (optional) db svr [mysql / mariadb] (tested on mariadb 10.11 w/ rocky linux 10)  
 
 ## etc
-### structure (legacy)
+### Structure (legacy)
 <img width="1000" height="711" alt="tg_cdn_structure" src="https://github.com/user-attachments/assets/d8c834cd-28da-4c62-ba39-d9bff7e78d14" />
 <img width="1000" height="453" alt="image" src="https://github.com/user-attachments/assets/716aa968-93b9-4a05-93b3-bac6e9195b68" />
 
@@ -82,7 +109,7 @@ You need to request updates from the Telegram server using the ```file_id```(the
 Officially, the ```file_path``` is guaranteed to remain valid for at least **one hour**.  
 [documentation](https://core.telegram.org/bots/api#getfile)
 
-### test res
+### Performances
 <img width="1000" height="372" alt="cf_monthly" src="https://github.com/user-attachments/assets/c78c2594-8a01-4194-b7e0-14279a650f20" />
 <img width="1000" height="1429" alt="100samples_dff_view" src="https://github.com/user-attachments/assets/f1401464-20eb-41a8-bdb5-75808806f315" />
 <img width="1000" height="628" alt="mk_dg" src="https://github.com/user-attachments/assets/a9193d6f-c080-4d11-85b6-56541a4ffc07" />
