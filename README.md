@@ -33,7 +33,7 @@ if not content_type.startswith("image"):
         file_uuid_bytes = uuid.UUID(file_uuid_str).bytes
         images.append((url, file_uuid_bytes, content_type, sha256_hash))
 else:
-//...
+#...
 ```
 ```html
 <img src="https://example.com/content/uuid>
