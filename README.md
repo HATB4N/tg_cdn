@@ -14,7 +14,7 @@ This project implements a low-cost, self-hostable image hosting service by utili
 
 ## example usage
 - self host website img backend
-- *individual* bulk crawling image backend (*I don't know the criteria for bulk, but I've processed about 50-60k imgs per day (peak @ over 5k/h) on a regular home svr*)
+- *individual* bulk crawling image backend (*I don't know the criteria for bulk, but I've processed about 50-60k imgs per day (peak @ over 5k/h with 5bots) on a regular home svr*)
 - idk. anyway you can upload & retrive imgs if you want
 
 ### test vectors
